@@ -1,0 +1,107 @@
+from tree.helper import create_leaf, check_purity
+from preprocessing.feature_types import determine_type_of_feature
+from tree.splits import get_potential_splits, determine_best_split, split_data
+
+def decision_tree_algorithm(df, ml_task, counter=0, min_samples=2, max_depth=5):
+    """
+    Recursively builds a decision tree for either classification or regression.
+    
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        The input data containing features and the target label as the last column.
+    
+    ml_task : str
+        Specifies the type of machine learning task - "classification" or "regression".
+    
+    counter : int (default = 0)
+        Keeps track of the current depth of the tree during recursion.
+
+    min_samples : int (default = 2)
+        The minimum number of samples required to make a further split.
+
+    max_depth : int (default = 5)
+        The maximum allowed depth of the decision tree.
+
+    Returns:
+    --------
+    dict or value:
+        A nested dictionary representing the decision tree if more splits are made,
+        or a leaf value (class label or mean prediction) if a base case is reached.
+    """
+
+    # === Step 1: Data Preparation (Only once, at root level) ===
+    if counter == 0:
+        # Save column names and determine feature types globally
+        # These will help format questions during tree creation
+        global COLUMN_HEADERS, FEATURE_TYPES
+        COLUMN_HEADERS = df.columns
+        FEATURE_TYPES = determine_type_of_feature(df)
+
+        # Convert DataFrame to NumPy array for faster processing
+        data = df.values
+    else:
+        # In recursive calls, data is already in NumPy array format
+        data = df
+
+    # === Step 2: Base Cases for Stopping the Recursion ===
+    # Stop recursion and return a leaf node if:
+    # - Data is pure (all labels are the same)
+    # - Number of rows is below minimum allowed
+    # - Tree has reached the maximum depth
+    if (check_purity(data)) or (len(data) < min_samples) or (counter == max_depth):
+        leaf = create_leaf(data, ml_task)  # Use mean (regression) or mode (classification)
+        return leaf
+
+    # === Step 3: Recursive Case ===
+    else:
+        counter += 1  # Increment tree depth
+
+        # Find the best column and value to split the data
+        potential_splits = get_potential_splits(data)
+        split_column, split_value = determine_best_split(data, potential_splits, ml_task)
+
+        # Divide the data based on the chosen split
+        data_below, data_above = split_data(data, split_column, split_value, feature_types=FEATURE_TYPES)
+
+        # If either side is empty after split, return a leaf (prevents invalid recursion)
+        if len(data_below) == 0 or len(data_above) == 0:
+            leaf = create_leaf(data, ml_task)
+            return leaf
+
+        # === Step 4: Define the Question for the Current Node ===
+        feature_name = COLUMN_HEADERS[split_column]           # Get feature name
+        type_of_feature = FEATURE_TYPES[split_column]         # Check if categorical or continuous
+
+        if type_of_feature == "continuous":
+            # Format question for numeric/continuous features
+            question = "{} <= {}".format(feature_name, split_value)
+        else:
+            # Format question for categorical features
+            question = "{} = {}".format(feature_name, split_value)
+
+        # Create a dictionary for this internal node in the tree
+        sub_tree = {question: []}
+
+        # === Step 5: Recur for Left and Right Subtrees ===
+        # Recursively build the left (yes) and right (no) branches
+        yes_answer = decision_tree_algorithm(
+            data_below, ml_task, counter, min_samples, max_depth
+        )
+
+        no_answer = decision_tree_algorithm(
+            data_above, ml_task, counter, min_samples, max_depth
+        )
+
+        # === Step 6: Handle Case Where Both Branches Are Identical ===
+        # This can happen if the split didn't add any new information.
+        if yes_answer == no_answer:
+            # Replace subtree with a single leaf node
+            sub_tree = yes_answer
+        else:
+            # Append both branches to the current node
+            sub_tree[question].append(yes_answer)
+            sub_tree[question].append(no_answer)
+
+        return sub_tree
+
