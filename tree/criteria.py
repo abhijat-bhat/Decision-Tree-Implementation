@@ -1,5 +1,68 @@
 import numpy as np
 
+class GiniCriterion:
+    def __init__(self):
+        self.name = "gini"
+    
+    def calculate_impurity(self, data):
+        """
+        Calculate Gini impurity for a dataset.
+        """
+        if len(data) == 0:
+            return 0
+            
+        # Get the label column
+        label_column = data[:, -1]
+        
+        # Get unique labels and their counts
+        _, counts = np.unique(label_column, return_counts=True)
+        
+        # Calculate probabilities
+        probabilities = counts / counts.sum()
+        
+        # Calculate Gini impurity: 1 - Σ(p_i²)
+        gini = 1 - np.sum(probabilities ** 2)
+        
+        return gini
+    
+    def calculate_overall_metric(self, data_below, data_above):
+        """
+        Calculate overall Gini impurity for a split.
+        """
+        return calculate_overall_metric(data_below, data_above, self.calculate_impurity)
+
+class EntropyCriterion:
+    def __init__(self):
+        self.name = "entropy"
+    
+    def calculate_impurity(self, data):
+        """
+        Calculate entropy for a dataset.
+        """
+        return calculate_entropy(data)
+    
+    def calculate_overall_metric(self, data_below, data_above):
+        """
+        Calculate overall entropy for a split.
+        """
+        return calculate_overall_metric(data_below, data_above, self.calculate_impurity)
+
+class MSECriterion:
+    def __init__(self):
+        self.name = "mse"
+    
+    def calculate_impurity(self, data):
+        """
+        Calculate MSE for a dataset.
+        """
+        return calculate_mse(data)
+    
+    def calculate_overall_metric(self, data_below, data_above):
+        """
+        Calculate overall MSE for a split.
+        """
+        return calculate_overall_metric(data_below, data_above, self.calculate_impurity)
+
 def calculate_mse(data):
     """
     Calculates the Mean Squared Error (MSE) of the target (label) values

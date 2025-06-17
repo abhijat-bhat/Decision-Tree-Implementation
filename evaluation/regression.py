@@ -44,6 +44,31 @@ def calculate_r_squared(df, tree):
 
     return r_squared
 
+def calculate_mean_absolute_error(df, tree):
+    """
+    Computes the Mean Absolute Error (MAE) for a regression tree model.
+
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        Dataset that contains the features and the actual label values.
+
+    tree : dict
+        A trained regression decision tree.
+
+    Returns:
+    --------
+    float
+        The Mean Absolute Error (MAE).
+    """
+
+    labels = df.label
+    predictions = df.apply(predict_example, args=(tree,), axis=1)
+
+    mae = (abs(labels - predictions)).mean()
+
+    return mae
+
 def create_plot(df, tree, title, sort_by="index"):
     """
     Visualizes predicted vs actual values for regression using a line plot.
@@ -76,9 +101,11 @@ def create_plot(df, tree, title, sort_by="index"):
         plot_df = plot_df.sort_values(by=sort_by)
 
     # Plot the sorted results
-    plot_df.plot(
+    fig = plot_df.plot(
         figsize=(18, 5),
         title=title,
         xlabel="Data Index (sorted)",
         ylabel="Target Value"
-    )
+    ).figure
+    # plt.show() # Removed plt.show()
+    return fig # Return the figure object

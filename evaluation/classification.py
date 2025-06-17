@@ -65,4 +65,4 @@ def plot_confusion_matrix(df, tree, title="Confusion Matrix"):
     disp.plot(cmap="Blues")
     plt.title(title)
     plt.grid(False)
-    plt.show()
+    return plt.gcf()

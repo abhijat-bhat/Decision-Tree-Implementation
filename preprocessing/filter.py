@@ -2,6 +2,62 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
 
+def filter_data(data, missing_strategy="mean", scaling_method=None):
+    """
+    Filter and preprocess the input data based on specified strategies.
+    
+    Parameters:
+    -----------
+    data : pandas.DataFrame
+        Input data to be processed
+        
+    missing_strategy : str
+        Strategy for handling missing values:
+        - "mean": Fill with mean (for numeric) or mode (for categorical)
+        - "median": Fill with median
+        - "mode": Fill with mode
+        - "drop": Drop rows with missing values
+        
+    scaling_method : str or None
+        Method for scaling numeric features:
+        - "standard": StandardScaler
+        - "minmax": MinMaxScaler
+        - None: No scaling
+        
+    Returns:
+    --------
+    pandas.DataFrame
+        Processed data
+    """
+    df = data.copy()
+    
+    # Handle missing values
+    if missing_strategy == "drop":
+        df = df.dropna()
+    else:
+        for col in df.columns:
+            if df[col].dtype in ['float64', 'int64']:
+                if missing_strategy == "mean":
+                    df[col].fillna(df[col].mean(), inplace=True)
+                elif missing_strategy == "median":
+                    df[col].fillna(df[col].median(), inplace=True)
+                elif missing_strategy == "mode":
+                    df[col].fillna(df[col].mode()[0], inplace=True)
+            else:
+                df[col].fillna(df[col].mode()[0], inplace=True)
+    
+    # Apply scaling if specified
+    if scaling_method:
+        numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+        if len(numeric_cols) > 0:
+            if scaling_method == "standard":
+                scaler = StandardScaler()
+            else:  # minmax
+                scaler = MinMaxScaler()
+            df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+    
+    return df
+
 def preprocess_csv(
     file_path,
     drop_threshold=0.5,

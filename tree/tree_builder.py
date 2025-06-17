@@ -1,8 +1,14 @@
 from tree.helper import create_leaf, check_purity
 from preprocessing.feature_types import determine_type_of_feature
 from tree.splits import get_potential_splits, determine_best_split, split_data
+import numpy as np
 
-def decision_tree_algorithm(df, ml_task, counter=0, min_samples=2, max_depth=5):
+# Global variables to store column headers, feature types, and feature importances
+COLUMN_HEADERS = None
+FEATURE_TYPES = None
+FEATURE_IMPORTANCES = None # Initialize a global dictionary for feature importances
+
+def decision_tree_algorithm(df, ml_task, criterion_obj, counter=0, min_samples=2, max_depth=5):
     """
     Recursively builds a decision tree for either classification or regression.
     
@@ -13,6 +19,9 @@ def decision_tree_algorithm(df, ml_task, counter=0, min_samples=2, max_depth=5):
     
     ml_task : str
         Specifies the type of machine learning task - "classification" or "regression".
+    
+    criterion_obj : object
+        The criterion object used to calculate impurity and determine the best split.
     
     counter : int (default = 0)
         Keeps track of the current depth of the tree during recursion.
@@ -34,9 +43,10 @@ def decision_tree_algorithm(df, ml_task, counter=0, min_samples=2, max_depth=5):
     if counter == 0:
         # Save column names and determine feature types globally
         # These will help format questions during tree creation
-        global COLUMN_HEADERS, FEATURE_TYPES
+        global COLUMN_HEADERS, FEATURE_TYPES, FEATURE_IMPORTANCES
         COLUMN_HEADERS = df.columns
         FEATURE_TYPES = determine_type_of_feature(df)
+        FEATURE_IMPORTANCES = {col: 0.0 for col in COLUMN_HEADERS[:-1]} # Initialize with 0 for all features
 
         # Convert DataFrame to NumPy array for faster processing
         data = df.values
@@ -57,9 +67,16 @@ def decision_tree_algorithm(df, ml_task, counter=0, min_samples=2, max_depth=5):
     else:
         counter += 1  # Increment tree depth
 
+        # Calculate initial impurity before splitting
+        initial_impurity = criterion_obj.calculate_impurity(data)
+
         # Find the best column and value to split the data
         potential_splits = get_potential_splits(data)
-        split_column, split_value = determine_best_split(data, potential_splits, ml_task)
+        split_column, split_value, overall_metric_after_split = determine_best_split(data, potential_splits, ml_task, feature_types=FEATURE_TYPES)
+
+        # Calculate impurity reduction and update feature importance
+        impurity_reduction = initial_impurity - overall_metric_after_split
+        FEATURE_IMPORTANCES[COLUMN_HEADERS[split_column]] += impurity_reduction
 
         # Divide the data based on the chosen split
         data_below, data_above = split_data(data, split_column, split_value, feature_types=FEATURE_TYPES)
@@ -86,11 +103,11 @@ def decision_tree_algorithm(df, ml_task, counter=0, min_samples=2, max_depth=5):
         # === Step 5: Recur for Left and Right Subtrees ===
         # Recursively build the left (yes) and right (no) branches
         yes_answer = decision_tree_algorithm(
-            data_below, ml_task, counter, min_samples, max_depth
+            data_below, ml_task, criterion_obj, counter, min_samples, max_depth
         )
 
         no_answer = decision_tree_algorithm(
-            data_above, ml_task, counter, min_samples, max_depth
+            data_above, ml_task, criterion_obj, counter, min_samples, max_depth
         )
 
         # === Step 6: Handle Case Where Both Branches Are Identical ===

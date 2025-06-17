@@ -30,7 +30,7 @@ def get_potential_splits(data):
 
     return potential_splits
 
-def determine_best_split(data, potential_splits, ml_task):
+def determine_best_split(data, potential_splits, ml_task, feature_types):
     """
     Determines the best feature and value to split the dataset on, 
     by minimizing an overall impurity/error metric.
@@ -48,6 +48,9 @@ def determine_best_split(data, potential_splits, ml_task):
     
     ml_task : str
         The machine learning task: "classification" or "regression".
+
+    feature_types : list of str
+        A list indicating the type ('categorical' or 'continuous') of each feature column.
 
     Returns:
     --------
@@ -68,7 +71,8 @@ def determine_best_split(data, potential_splits, ml_task):
             data_below, data_above = split_data(
                 data,
                 split_column=column_index,
-                split_value=value
+                split_value=value,
+                feature_types=feature_types
             )
 
             # Choose appropriate metric function based on ML task
@@ -91,7 +95,7 @@ def determine_best_split(data, potential_splits, ml_task):
                 best_split_column = column_index
                 best_split_value = value
 
-    return best_split_column, best_split_value
+    return best_split_column, best_split_value, best_overall_metric
 
 def split_data(data, split_column, split_value, feature_types):
     """
