@@ -27,7 +27,7 @@ class GiniCriterion:
     
     def calculate_overall_metric(self, data_below, data_above):
         """
-        Calculate overall Gini impurity for a split.
+        Calculate overall Gini impurity for a split. 
         """
         return calculate_overall_metric(data_below, data_above, self.calculate_impurity)
 

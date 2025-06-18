@@ -1,45 +1,5 @@
 import graphviz
-import os
 import subprocess
-
-def get_graphviz_path():
-    """Find Graphviz installation path and verify it works"""
-    # First check if dot is already in PATH
-    try:
-        subprocess.run(['dot', '-V'], capture_output=True, check=True)
-        return None  # Graphviz is already in PATH
-    except:
-        pass
-
-    # Common Windows installation paths
-    possible_paths = [
-        r"C:\Program Files\Graphviz\bin",
-        r"C:\Program Files (x86)\Graphviz\bin",
-        r"C:\Graphviz\bin",
-        r"E:\windows_10_cmake_Release_Graphviz-12.2.1-win64\Graphviz-12.2.1-win64\bin"
-    ]
-    
-    # Check each path
-    for path in possible_paths:
-        if os.path.exists(path):
-            # If it's a directory, check for dot.exe
-            if os.path.isdir(path):
-                dot_path = os.path.join(path, 'dot.exe')
-                if os.path.exists(dot_path):
-                    return path
-            # If it's a file, return its directory
-            elif os.path.isfile(path):
-                return os.path.dirname(path)
-    
-    return None
-
-# Set Graphviz path if needed
-GRAPHVIZ_PATH = get_graphviz_path()
-if GRAPHVIZ_PATH:
-    print(f"Found Graphviz at: {GRAPHVIZ_PATH}")
-    os.environ["PATH"] = GRAPHVIZ_PATH + os.pathsep + os.environ["PATH"]
-else:
-    print("Graphviz not found in common locations. Please ensure it's installed and in PATH.")
 
 def visualize_tree(tree):
     """

@@ -7,9 +7,11 @@ from preprocessing.feature_types import determine_type_of_feature
 from preprocessing.filter import filter_data
 from preprocessing.split import train_test_split
 from visualization.visualize import visualize_tree
-from tree.hyperparameter_tuning import tune_hyperparameters
+from tree.hyperparameter_tuning import tune_hyperparameters, plot_grid_search_heatmap
 import graphviz
 import os
+from together import Together
+
 # Removed sklearn.metrics imports
 # from sklearn.metrics import accuracy_score, mean_squared_error, r2_score, classification_report, mean_absolute_error
 
@@ -460,13 +462,13 @@ def show_preprocessing(data):
     # Missing value handling
     st.markdown("### Missing Value Handling")
     missing_strategy = st.selectbox(
-        "Select strategy for missing values",
+        "Select strategy for missing values in numerical features",
         ["Drop rows", "Fill with mean", "Fill with median", "Fill with mode"],
         key="missing_strategy_selectbox"
     )
 
-    # Handle categorical columns
-    categorical_cols = data.select_dtypes(include=['object']).columns
+    # Handle categorical columns using determine_type_of_feature
+    categorical_cols = [col for col, ftype in zip(data.columns, feature_types) if ftype == "categorical"]
     if len(categorical_cols) > 0:
         st.markdown("### Categorical Columns")
         st.info(f"Found categorical columns: {', '.join(categorical_cols)}")
@@ -594,6 +596,17 @@ def is_id_column(series, is_first_column=False):
     # For other columns, only check the name
     return column_name in ['id', 'index', 'idx'] or column_name.endswith('_id')
 
+def get_dataset_summary(df):
+    summary = {
+        "columns": list(df.columns),
+        "dtypes": df.dtypes.astype(str).to_dict(),
+        "n_rows": len(df),
+        "n_missing": df.isnull().sum().to_dict(),
+        "sample": df.head(3).to_dict(orient="records"),
+        "describe": df.describe(include='all').to_dict()
+    }
+    return summary
+
 def main():
     # Sidebar
     st.sidebar.title("Navigation")
@@ -658,6 +671,44 @@ def main():
                     st.info(f"Automatically detected and excluded ID columns: {', '.join(auto_detected_id_columns)}")
                     data = data.drop(columns=auto_detected_id_columns)
                 
+                # --- Chatbot Integration: Only after filtering, before feature exclusion ---
+                filtered_data = data.copy()
+                dataset_summary = get_dataset_summary(filtered_data)
+                st.markdown("### 💬 Dataset Chatbot (Ask about your data!)")
+                if "chat_history" not in st.session_state:
+                    st.session_state.chat_history = []
+
+                user_question = st.chat_input("Ask a question about your dataset (e.g., which features to exclude, what does a column mean, etc.)")
+                if user_question:
+                    prompt = (
+                        "You are a helpful data science assistant. "
+                        "The user has uploaded a dataset. Here is a summary of the dataset: "
+                        f"\n\n{dataset_summary}\n\n"
+                        f"The user asks: '{user_question}'\n"
+                        "Please answer with clear, practical advice. If the user asks which features to exclude, suggest columns that are likely IDs, have many missing values, or are not useful for prediction. "
+                        "If the user asks about a column, explain what it likely means based on its name and statistics. "
+                        "If the user asks about feature importance, explain how it could be determined or what is likely important."
+                    )
+                    # Call Together AI API using the correct client interface
+                    client = Together(api_key="c0928b6e86c8f659fa5a868177669e8f9fdcabc58b426262c2dba196c029c24c")
+                    try:
+                        response = client.chat.completions.create(
+                            model="meta-llama/Llama-3-70b-chat-hf",
+                            messages=[
+                                {"role": "system", "content": "You are a helpful data science assistant."},
+                                {"role": "user", "content": prompt}
+                            ]
+                        )
+                        answer = response.choices[0].message.content.strip()
+                    except Exception as e:
+                        answer = f"[Error contacting Together AI: {e}]"
+                    st.session_state.chat_history.append({"user": user_question, "bot": answer})
+
+                # Display chat history
+                for chat in st.session_state.chat_history:
+                    st.markdown(f"**You:** {chat['user']}")
+                    st.markdown(f"**Bot:** {chat['bot']}")
+
                 # --- Hyperparameter Tuning Section ---
                 st.markdown('<div class="section-header">Hyperparameter Tuning</div>', unsafe_allow_html=True)
                 enable_tuning = st.checkbox("Enable Hyperparameter Tuning (Grid Search)")
@@ -686,6 +737,44 @@ def main():
                 # Show preprocessing options
                 preprocessing_config = show_preprocessing(data)
                 
+                # Preprocess data minimally for target type detection and criterion selection
+                X = data.drop(columns=[target_col])
+                y = data[target_col]
+                # Handle categorical columns for detection
+                categorical_cols = X.select_dtypes(include=['object']).columns
+                if len(categorical_cols) > 0:
+                    for col in categorical_cols:
+                        X[col] = X[col].astype('category').cat.codes
+                # Apply preprocessing using filter_data (for missing values, scaling)
+                X_for_type = filter_data(
+                    X,
+                    missing_strategy=(
+                        "drop" if preprocessing_config["missing_strategy"] == "Drop rows" else
+                        "mean" if preprocessing_config["missing_strategy"] == "Fill with mean" else
+                        "median" if preprocessing_config["missing_strategy"] == "Fill with median" else
+                        "mode"
+                    ),
+                    scaling_method=(
+                        None if preprocessing_config["scaling_method"] == "None" else preprocessing_config["scaling_method"].lower()
+                    )
+                )
+                y_for_type = y[X_for_type.index]
+                target_type = determine_type_of_feature(pd.DataFrame({target_col: y_for_type}))[0]
+                if target_type == "categorical":
+                    ml_task = "classification"
+                    impurity_choice = st.selectbox(
+                        "Select impurity criterion for classification",
+                        ["Gini", "Entropy"],
+                        key="impurity_criterion_selectbox"
+                    )
+                    if impurity_choice == "Gini":
+                        criterion_class = GiniCriterion
+                    else:
+                        criterion_class = EntropyCriterion
+                else:
+                    ml_task = "regression"
+                    criterion_class = MSECriterion
+
                 # Show tree building options (base parameters)
                 # These parameters will be used if hyperparameter tuning is NOT enabled
                 if not enable_tuning:
@@ -705,39 +794,26 @@ def main():
                     with st.spinner("Preparing data..."):
                         # Preprocess data
                         X = data.drop(columns=[target_col])
-                        y = data[target_col]
-                        
+                        y = data[target_col] 
                         # Handle categorical columns
                         categorical_cols = X.select_dtypes(include=['object']).columns
                         if len(categorical_cols) > 0:
-                            # Convert categorical columns to numeric using label encoding
                             for col in categorical_cols:
                                 X[col] = X[col].astype('category').cat.codes
-                        
-                        # Apply preprocessing
-                        if preprocessing_config["missing_strategy"] == "Drop rows":
-                            X = X.dropna()
-                            y = y[X.index]
-                        elif preprocessing_config["missing_strategy"] == "Fill with mean":
-                            X = X.fillna(X.mean())
-                        elif preprocessing_config["missing_strategy"] == "Fill with median":
-                            X = X.fillna(X.median())
-                        elif preprocessing_config["missing_strategy"] == "Fill with mode":
-                            X = X.fillna(X.mode().iloc[0])
-
-                        # Determine problem type and criterion based on target column if not set by tuning
-                        if pd.api.types.is_numeric_dtype(y):
-                            # If the target column has many unique values, assume regression
-                            if y.nunique() > 20 and y.dtype != 'object': # Heuristic for regression
-                                ml_task = "regression"
-                                criterion_class = MSECriterion
-                            else:
-                                ml_task = "classification"
-                                criterion_class = GiniCriterion # Default for numeric classification
-                        else:
-                            ml_task = "classification"
-                            criterion_class = GiniCriterion # Default for non-numeric classification
-                        
+                        X = filter_data(
+                            X,
+                            missing_strategy=(
+                                "drop" if preprocessing_config["missing_strategy"] == "Drop rows" else
+                                "mean" if preprocessing_config["missing_strategy"] == "Fill with mean" else
+                                "median" if preprocessing_config["missing_strategy"] == "Fill with median" else
+                                "mode"
+                            ),
+                            scaling_method=(
+                                None if preprocessing_config["scaling_method"] == "None" else preprocessing_config["scaling_method"].lower()
+                            )
+                        )
+                        y = y[X.index]
+                        # Use ml_task and criterion_class as set above
                         # Split data
                         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
@@ -764,9 +840,15 @@ def main():
                         st.write("Best Parameters found:", best_params)
                         st.write(f"Best Cross-Validation Score: {best_score:.4f}")
                         
-                        st.markdown("### All Tuning Combinations")
-                        tuning_results_df = pd.DataFrame(tuning_results)
-                        st.dataframe(tuning_results_df.sort_values(by="mean_score", ascending=False))
+                        # --- Heatmap Visualization for Hyperparameter Tuning ---
+                        st.markdown("### Hyperparameter Tuning Heatmap")
+                        try:
+                            tuning_results_df = pd.DataFrame(tuning_results)
+                            tuning_results_df = tuning_results_df.rename(columns={"min_samples_split": "min_samples"})
+                            fig = plot_grid_search_heatmap(tuning_results_df)
+                            st.pyplot(fig)
+                        except Exception as e:
+                            st.info(f"Heatmap could not be generated: {e}")
 
                         tree = best_model # Use the best model found by tuning
                         tree_config["problem_type"] = ml_task # Update problem type
@@ -786,22 +868,21 @@ def main():
                     y_pred = tree.predict(X_test)
                     
                     # Display Feature Importances
-                    # st.markdown('<div class="section-header">Feature Importances</div>', unsafe_allow_html=True)
-                    # if tree.feature_importances_ and any(tree.feature_importances_.values()): # Check if any importance is non-zero
-                    #     importances_df = pd.DataFrame(
-                    #         list(tree.feature_importances_.items()),
-                    #         columns=['Feature', 'Importance']
-                    #     )
-                    #     importances_df = importances_df.sort_values(by='Importance', ascending=False)
-                    #     st.dataframe(importances_df)
+                    st.markdown('<div class="section-header">Feature Importances</div>', unsafe_allow_html=True)
+                    if tree.feature_importances_ and any(v != 0 for v in tree.feature_importances_.values()):
+                        importances_df = pd.DataFrame(
+                            list(tree.feature_importances_.items()),
+                            columns=['Feature', 'Importance']
+                        ).sort_values(by='Importance', ascending=False)
+                        st.dataframe(importances_df)
 
-                    #     # Optional: Plot feature importances
-                    #     fig_imp, ax_imp = plt.subplots()
-                    #     sns.barplot(x='Importance', y='Feature', data=importances_df, ax=ax_imp)
-                    #     ax_imp.set_title("Feature Importances")
-                    #     st.pyplot(fig_imp)
-                    # else:
-                    #     st.info("Feature importances are not available or are all zero (e.g., if it's a single leaf node or tree couldn't split).")
+                        # Optional: Plot feature importances
+                        fig_imp, ax_imp = plt.subplots()
+                        sns.barplot(x='Importance', y='Feature', data=importances_df, ax=ax_imp)
+                        ax_imp.set_title("Feature Importances")
+                        st.pyplot(fig_imp)
+                    else:
+                        st.info("Feature importances are not available or are all zero (e.g., if it's a single leaf node or tree couldn't split).")
 
                     # Visualize tree
                     st.markdown('<div class="section-header">Tree Visualization</div>', unsafe_allow_html=True)

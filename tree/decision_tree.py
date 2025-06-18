@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
-from .tree_builder import decision_tree_algorithm, FEATURE_IMPORTANCES
+from .tree_builder import decision_tree_algorithm
 from .predict import predict_example
+import copy
 
 class DecisionTree:
     def __init__(self, criterion, max_depth=5, min_samples_split=2, min_samples_leaf=1):
@@ -37,8 +38,13 @@ class DecisionTree:
         # Combine features and target
         df = pd.concat([X, y], axis=1)
         
+        # Reset global FEATURE_IMPORTANCES before each fit
+        from . import tree_builder
+        if hasattr(tree_builder, 'FEATURE_IMPORTANCES'):
+            tree_builder.FEATURE_IMPORTANCES = None
+        
         # Build the tree
-        self.tree = decision_tree_algorithm(
+        self.tree, self.feature_importances_ = decision_tree_algorithm(
             df=df,
             ml_task=self.ml_task,
             criterion_obj=self.criterion,
@@ -46,9 +52,6 @@ class DecisionTree:
             min_samples=self.min_samples_split,
             max_depth=self.max_depth
         )
-        
-        # Store feature importances
-        self.feature_importances_ = FEATURE_IMPORTANCES
         
         return self
     

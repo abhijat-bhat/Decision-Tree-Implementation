@@ -22,8 +22,8 @@ def determine_type_of_feature(df):
     
     feature_types = []  # Initialize an empty list to store the type of each feature
     
-    n_unique_values_treshold = 15  # Threshold for deciding if a numeric feature is categorical
-                                   # If a feature has ≤ 15 unique values, treat it as categorical
+    n_unique_values_treshold = 7  # Threshold for deciding if a numeric feature is categorical
+                                   # If a feature has ≤ 7 unique values, treat it as categorical
     
     # Iterate over each column in the DataFrame
     for feature in df.columns:

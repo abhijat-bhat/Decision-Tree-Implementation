@@ -5,7 +5,7 @@ from tree.criteria import calculate_entropy, calculate_mse, calculate_overall_me
 def get_potential_splits(data):
     """
     Finds all potential split points for each feature (column) in the dataset.
-
+ 
     Parameters:
     - data (ndarray): A 2D NumPy array where the last column is the label 
                       and the rest are features (both categorical or continuous).
@@ -30,7 +30,7 @@ def get_potential_splits(data):
 
     return potential_splits
 
-def determine_best_split(data, potential_splits, ml_task, feature_types):
+def determine_best_split(data, potential_splits, feature_types, criterion_obj):
     """
     Determines the best feature and value to split the dataset on, 
     by minimizing an overall impurity/error metric.
@@ -46,11 +46,11 @@ def determine_best_split(data, potential_splits, ml_task, feature_types):
         A dictionary where keys are column indices and values are lists
         of values to try splitting on.
     
-    ml_task : str
-        The machine learning task: "classification" or "regression".
-
     feature_types : list of str
         A list indicating the type ('categorical' or 'continuous') of each feature column.
+
+    criterion_obj : object
+        The criterion object (e.g., GiniCriterion, EntropyCriterion, MSECriterion) to use for impurity calculation.
 
     Returns:
     --------
@@ -61,7 +61,7 @@ def determine_best_split(data, potential_splits, ml_task, feature_types):
         The threshold or category value to use for the split.
     """
 
-    first_iteration = True  # Used to initialize the "best" variables on first loop
+    first_iteration = True
 
     # Iterate over all features and their potential split values
     for column_index in potential_splits:
@@ -75,17 +75,8 @@ def determine_best_split(data, potential_splits, ml_task, feature_types):
                 feature_types=feature_types
             )
 
-            # Choose appropriate metric function based on ML task
-            if ml_task == "regression":
-                current_overall_metric = calculate_overall_metric(
-                    data_below, data_above,
-                    metric_function=calculate_mse
-                )
-            else:  # classification
-                current_overall_metric = calculate_overall_metric(
-                    data_below, data_above,
-                    metric_function=calculate_entropy
-                )
+            # Use the provided criterion_obj for impurity calculation
+            current_overall_metric = criterion_obj.calculate_overall_metric(data_below, data_above)
 
             # Update the best split if this is the first iteration,
             # or if the current split has a lower impurity/error
